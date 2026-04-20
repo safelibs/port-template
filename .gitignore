@@ -1,3 +1,11 @@
 /.plan/
 /.juvenal-state.json
 /workflow.yaml
+/build/
+/dist/
+*.deb
+*.log
+.DS_Store
+*.swp
+*.swo
+*~

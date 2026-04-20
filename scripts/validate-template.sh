@@ -33,9 +33,29 @@ validate_json() {
   python3 -m json.tool "$repo_root/$path" >/dev/null || fail "invalid JSON: $path"
 }
 
+validate_shell_syntax() {
+  local path="$1"
+
+  require_file "$path"
+  bash -n "$repo_root/$path" || fail "invalid shell syntax: $path"
+}
+
+validate_package_metadata() {
+  validate_shell_syntax "packaging/package.env"
+  validate_shell_syntax "scripts/build-deb.sh"
+
+  (
+    cd "$repo_root"
+    # shellcheck source=/dev/null
+    source "$repo_root/scripts/build-deb.sh"
+    load_package_config
+  ) || fail "invalid package metadata: packaging/package.env"
+}
+
 required_dirs=(
   original
   safe
+  packaging
   tests/original
   tests/safe
   scripts
@@ -45,6 +65,7 @@ required_files=(
   all_cves.json
   dependents.json
   relevant_cves.json
+  packaging/package.env
   test-original.sh
   test-safe.sh
 )
@@ -58,6 +79,7 @@ json_files=(
 executable_files=(
   test-original.sh
   test-safe.sh
+  scripts/build-deb.sh
   scripts/run-tests.sh
   scripts/validate-template.sh
 )
@@ -77,5 +99,7 @@ done
 for path in "${executable_files[@]}"; do
   require_executable "$path"
 done
+
+validate_package_metadata
 
 printf 'Template validation passed.\n'
