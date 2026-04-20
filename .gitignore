@@ -1,8 +1,10 @@
 /.plan/
 /.juvenal-state.json
 /workflow.yaml
+/.ci/
 /build/
 /dist/
+/release-artifacts/
 *.deb
 *.log
 .DS_Store

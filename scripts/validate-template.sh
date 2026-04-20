@@ -52,10 +52,17 @@ validate_package_metadata() {
   ) || fail "invalid package metadata: packaging/package.env"
 }
 
+require_gitattributes_entry() {
+  local entry="$1"
+
+  grep -Fxq -- "$entry" "$repo_root/.gitattributes" || fail "missing .gitattributes entry: $entry"
+}
+
 required_dirs=(
   original
   safe
   packaging
+  docs
   tests/original
   tests/safe
   scripts
@@ -63,8 +70,12 @@ required_dirs=(
 
 required_files=(
   .github/workflows/ci-release.yml
+  .gitattributes
+  README.md
   all_cves.json
   dependents.json
+  docs/PORTING.md
+  docs/PUBLISHING.md
   relevant_cves.json
   packaging/package.env
   test-original.sh
@@ -85,6 +96,14 @@ executable_files=(
   scripts/validate-template.sh
 )
 
+gitattributes_entries=(
+  "*.sh text eol=lf"
+  "*.json text eol=lf"
+  "*.md text eol=lf"
+  "*.env text eol=lf"
+  ".github/workflows/*.yml text eol=lf"
+)
+
 for path in "${required_dirs[@]}"; do
   require_dir "$path"
 done
@@ -99,6 +118,10 @@ done
 
 for path in "${executable_files[@]}"; do
   require_executable "$path"
+done
+
+for entry in "${gitattributes_entries[@]}"; do
+  require_gitattributes_entry "$entry"
 done
 
 validate_package_metadata
