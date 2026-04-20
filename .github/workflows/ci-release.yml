@@ -1,0 +1,256 @@
+name: ci-release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test-build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Print tool versions
+        run: |
+          set -euo pipefail
+          bash --version
+          git --version
+          python3 --version
+          dpkg --version
+          dpkg-deb --version
+
+      - name: Determine commits to process
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .ci
+          commits_tmp="$(mktemp)"
+          ALL_ZERO="0000000000000000000000000000000000000000"
+          INITIAL_BRANCH_CREATE=false
+          AFTER_SHA="$(git rev-parse HEAD)"
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            eval "$(
+              python3 - <<'PY'
+          import json
+          import os
+          import shlex
+
+          with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as event_file:
+              event = json.load(event_file)
+
+          values = {
+              "BEFORE_SHA": event.get("before") or "",
+              "AFTER_SHA": event.get("after") or "",
+              "PUSH_CREATED": "true" if event.get("created") else "false",
+              "PUSH_REF": event.get("ref") or "",
+          }
+
+          for name, value in values.items():
+              print(f"{name}={shlex.quote(value)}")
+          PY
+            )"
+
+            printf 'Push ref: %s\n' "$PUSH_REF"
+            printf 'Push created branch: %s\n' "$PUSH_CREATED"
+            printf 'Before SHA: %s\n' "$BEFORE_SHA"
+            printf 'After SHA: %s\n' "$AFTER_SHA"
+
+            if [[ -z "$AFTER_SHA" || "$AFTER_SHA" == "$ALL_ZERO" ]]; then
+              printf 'Push after SHA is empty or all-zero; branch deletion pushes do not produce safe library artifacts.\n' >&2
+              exit 1
+            fi
+            if [[ -z "$BEFORE_SHA" ]]; then
+              printf 'Push before SHA is empty; unable to enumerate pushed commits safely.\n' >&2
+              exit 1
+            fi
+
+            if ! git cat-file -e "$AFTER_SHA^{commit}" 2>/dev/null; then
+              printf 'Fetching %s from origin to resolve pushed head %s.\n' "$PUSH_REF" "$AFTER_SHA"
+              if ! git fetch --no-tags origin "$PUSH_REF"; then
+                printf 'Fetch of %s from origin did not complete successfully.\n' "$PUSH_REF" >&2
+              fi
+            fi
+            if ! git cat-file -e "$AFTER_SHA^{commit}" 2>/dev/null; then
+              printf 'Unable to resolve pushed head commit: %s\n' "$AFTER_SHA" >&2
+              exit 1
+            fi
+
+            if [[ "$BEFORE_SHA" == "$ALL_ZERO" ]]; then
+              INITIAL_BRANCH_CREATE=true
+              git rev-list --reverse "$AFTER_SHA" > "$commits_tmp"
+            else
+              if ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+                printf 'Fetching pushed before commit %s from origin.\n' "$BEFORE_SHA"
+                if ! git fetch --no-tags --depth=1 origin "$BEFORE_SHA"; then
+                  printf 'Fetch of before commit %s from origin did not complete successfully.\n' "$BEFORE_SHA" >&2
+                fi
+              fi
+              if ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+                printf 'Unable to resolve pushed before commit: %s\n' "$BEFORE_SHA" >&2
+                exit 1
+              fi
+
+              git rev-list --reverse "$BEFORE_SHA..$AFTER_SHA" > "$commits_tmp"
+              if [[ ! -s "$commits_tmp" ]]; then
+                printf 'No commits emitted for %s..%s; falling back to pushed head only.\n' "$BEFORE_SHA" "$AFTER_SHA"
+                printf '%s\n' "$AFTER_SHA" > "$commits_tmp"
+              fi
+            fi
+          else
+            AFTER_SHA="$(git rev-parse HEAD)"
+            printf '%s\n' "$AFTER_SHA" > "$commits_tmp"
+          fi
+
+          awk 'NF && !seen[$0]++' "$commits_tmp" > .ci/commits.txt
+          rm -f "$commits_tmp"
+
+          printf '%s\n' "$INITIAL_BRANCH_CREATE" > .ci/initial-branch-create.txt
+          printf '%s\n' "$AFTER_SHA" > .ci/after-sha.txt
+
+          if [[ ! -s .ci/commits.txt ]]; then
+            printf 'No commits were selected for processing.\n' >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            grep -Fx "$AFTER_SHA" .ci/commits.txt
+          fi
+
+          printf 'Commits selected for processing:\n'
+          cat .ci/commits.txt
+
+      - name: Test and build each commit
+        run: |
+          set -euo pipefail
+
+          commits_file="$GITHUB_WORKSPACE/.ci/commits.txt"
+          initial_branch_create="$(cat "$GITHUB_WORKSPACE/.ci/initial-branch-create.txt")"
+          head_sha="$(cat "$GITHUB_WORKSPACE/.ci/after-sha.txt")"
+          release_root="$GITHUB_WORKSPACE/release-artifacts"
+          required_files=(
+            "scripts/validate-template.sh"
+            "test-original.sh"
+            "test-safe.sh"
+            "scripts/build-deb.sh"
+            "packaging/package.env"
+            ".github/workflows/ci-release.yml"
+          )
+
+          rm -rf "$release_root"
+          mkdir -p "$release_root"
+
+          while IFS= read -r commit_sha || [[ -n "$commit_sha" ]]; do
+            [[ -n "$commit_sha" ]] || continue
+
+            printf 'Processing commit %s\n' "$commit_sha"
+            git checkout --force "$commit_sha"
+
+            missing_files=()
+            for required_file in "${required_files[@]}"; do
+              if [[ ! -f "$required_file" ]]; then
+                missing_files+=("$required_file")
+              fi
+            done
+
+            if (( ${#missing_files[@]} > 0 )); then
+              if [[ "$initial_branch_create" == "true" && "$commit_sha" != "$head_sha" ]]; then
+                printf 'Skipping initial branch creation scaffold commit %s; missing completed-template files:\n' "$commit_sha"
+                printf '  %s\n' "${missing_files[@]}"
+                continue
+              fi
+
+              printf 'Commit %s is missing required completed-template files:\n' "$commit_sha" >&2
+              printf '  %s\n' "${missing_files[@]}" >&2
+              exit 1
+            fi
+
+            bash scripts/validate-template.sh
+            ./test-original.sh
+            ./test-safe.sh
+
+            rm -rf build dist
+            SAFELIBS_COMMIT_SHA="$commit_sha" bash scripts/build-deb.sh
+
+            mapfile -t debs < <(find dist -type f -name '*.deb' -print | sort)
+            if (( ${#debs[@]} != 1 )); then
+              printf 'Expected exactly one .deb under dist/ for commit %s, found %d.\n' "$commit_sha" "${#debs[@]}" >&2
+              printf 'Found files:\n' >&2
+              find dist -type f -print >&2 || true
+              exit 1
+            fi
+
+            mkdir -p "$release_root/$commit_sha"
+            cp "${debs[0]}" "$release_root/$commit_sha/"
+          done < "$commits_file"
+
+      - name: Upload Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debs-${{ github.run_id }}
+          path: release-artifacts/**/*.deb
+          if-no-files-found: error
+
+      - name: Publish commit releases
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force origin
+
+          shopt -s nullglob
+          commit_dirs=(release-artifacts/*)
+          if (( ${#commit_dirs[@]} == 0 )); then
+            printf 'No commit artifact directories were produced.\n' >&2
+            exit 1
+          fi
+
+          for commit_dir in "${commit_dirs[@]}"; do
+            [[ -d "$commit_dir" ]] || continue
+
+            commit_sha="${commit_dir##*/}"
+            TAG_NAME="commit-$commit_sha"
+            debs=("$commit_dir"/*.deb)
+
+            if (( ${#debs[@]} == 0 )); then
+              printf 'No .deb artifacts found for commit %s.\n' "$commit_sha" >&2
+              exit 1
+            fi
+
+            if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+              git tag -f "$TAG_NAME" "$commit_sha"
+              git push origin "refs/tags/$TAG_NAME"
+            fi
+
+            notes_file="$(mktemp)"
+            {
+              printf 'Commit SHA: %s\n\n' "$commit_sha"
+              printf 'Attached .deb files were produced by `scripts/build-deb.sh`.\n'
+            } > "$notes_file"
+
+            if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+              gh release upload "$TAG_NAME" "release-artifacts/$commit_sha"/*.deb --clobber
+            else
+              gh release create "$TAG_NAME" "release-artifacts/$commit_sha"/*.deb --title "Safe library debs for ${commit_sha:0:12}" --notes-file "$notes_file"
+            fi
+
+            rm -f "$notes_file"
+          done

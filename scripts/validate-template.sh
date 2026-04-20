@@ -62,6 +62,7 @@ required_dirs=(
 )
 
 required_files=(
+  .github/workflows/ci-release.yml
   all_cves.json
   dependents.json
   relevant_cves.json
