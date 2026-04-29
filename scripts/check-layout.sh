@@ -44,12 +44,18 @@ validate_package_metadata() {
   validate_shell_syntax "packaging/package.env"
   validate_shell_syntax "scripts/build-debs.sh"
 
-  (
+  local library
+  library="$(
+    set -euo pipefail
     cd "$repo_root"
+    unset SAFELIBS_LIBRARY
     # shellcheck source=/dev/null
-    source "$repo_root/scripts/build-debs.sh"
-    load_package_config
-  ) || fail "invalid package metadata: packaging/package.env"
+    . "$repo_root/packaging/package.env"
+    printf '%s' "${SAFELIBS_LIBRARY:-}"
+  )" || fail "failed to source packaging/package.env"
+
+  [[ -n "$library" ]] || fail "packaging/package.env must set SAFELIBS_LIBRARY"
+  [[ "$library" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "invalid SAFELIBS_LIBRARY: $library"
 }
 
 require_gitattributes_entry() {

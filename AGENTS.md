@@ -21,7 +21,7 @@ The current shape moves the divergence into hook scripts under `scripts/`. The w
 | 5 | Run port tests | `scripts/run-port-tests.sh` | Run every `*.sh` under `tests/port/` |
 | 6 | Run validation tests | `scripts/run-validation-tests.sh` | Clone `safelibs/validator`, run `port-04-test` mode against `dist/*.deb` |
 | 7 | Upload `dist/*.deb` | (workflow) | One GitHub Actions artifact per run |
-| 8 | Publish release | (workflow) | `commit-<sha>` GitHub Release with every `dist/*.deb` |
+| 8 | Publish release | (workflow) | `build-<short-sha>` GitHub Release with every `dist/*.deb` |
 
 Steps 1–6 are hooks. Steps 7–8 are workflow-owned and ports do not customize them.
 

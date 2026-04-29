@@ -86,7 +86,7 @@ jobs:
           path: dist/*.deb
           if-no-files-found: error
 
-      - name: Publish commit release
+      - name: Publish build release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,16 +94,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          tag="commit-${GITHUB_SHA}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch --tags --force origin
-
-          if ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            git tag -f "$tag" "$GITHUB_SHA"
-            git push origin "refs/tags/$tag"
-          fi
+          short_sha="${GITHUB_SHA:0:12}"
+          tag="build-${short_sha}"
 
           mapfile -t deb_files <<< "$DEB_PATHS"
 
@@ -113,11 +105,13 @@ jobs:
             printf 'Attached .deb file(s) were produced by `scripts/build-debs.sh`.\n'
           } > "$notes_file"
 
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "${deb_files[@]}" --clobber
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${deb_files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$tag" "${deb_files[@]}" \
-              --title "Safe library debs for ${GITHUB_SHA:0:12}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Safe library debs for ${short_sha}" \
               --notes-file "$notes_file"
           fi
 

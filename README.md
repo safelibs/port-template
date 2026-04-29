@@ -26,7 +26,7 @@ The full contract — what each script must do, the order CI runs them in, and w
 | `scripts/run-validation-tests.sh` | Hook: run the [safelibs/validator](https://github.com/safelibs/validator) test matrix in `port-04-test` mode against `dist/`. |
 | `scripts/run-tests.sh` | Internal helper that powers the upstream/port test runners. |
 | `scripts/lib/build_port_lock.py` | Internal helper for `run-validation-tests.sh`. |
-| `.github/workflows/ci-release.yml` | GitHub Actions workflow that runs the hook sequence and publishes a `commit-<sha>` GitHub Release. |
+| `.github/workflows/ci-release.yml` | GitHub Actions workflow that runs the hook sequence and publishes a `build-<short-sha>` GitHub Release. |
 | `AGENTS.md` | Canonical contract. Required reading before changing scripts, layout, or CI. |
 | `CLAUDE.md` | Pointer to `AGENTS.md` for Claude Code. |
 
@@ -91,7 +91,7 @@ The package.env validator rejects unsupported variables, command/process substit
 5. `scripts/run-port-tests.sh`
 6. `scripts/run-validation-tests.sh`
 
-It then uploads every `dist/*.deb` as a GitHub Actions artifact and creates or updates a GitHub Release tagged `commit-<sha>` with those `.deb` files.
+It then uploads every `dist/*.deb` as a GitHub Actions artifact and creates or updates a GitHub Release tagged `build-<short-sha>` with those `.deb` files.
 
 Manual workflow runs execute the same hook sequence, but release publishing only fires for `push` events.
 

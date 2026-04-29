@@ -13,7 +13,7 @@ Use this checklist when creating a new `safelibs/port-*` repository from this te
 7. Update `packaging/package.env` — at minimum set `SAFELIBS_LIBRARY` to the validator manifest identifier; update the `DEB_*` fields if you keep the reference `scripts/build-debs.sh`.
 8. Override `scripts/install-build-deps.sh` and `scripts/build-debs.sh` whenever the template defaults do not fit your build (typical for ports that use `dpkg-buildpackage`, `cargo`, `cmake`, or custom build scripts).
 9. Run local validation, tests, and package build commands.
-10. Push to `main`. Inspect the latest CI run and the `commit-<sha>` GitHub Release.
+10. Push to `main`. Inspect the latest CI run and the `build-<short-sha>` GitHub Release.
 
 ## Consuming Existing Artifacts
 
@@ -92,10 +92,10 @@ To reuse a local validator checkout (faster than re-cloning), set `SAFELIBS_VALI
 
 ## Push And Inspect
 
-Push completed port work to `main`. CI runs the hook sequence, uploads every `dist/*.deb` as an Actions artifact, and creates or updates a `commit-<sha>` GitHub Release.
+Push completed port work to `main`. CI runs the hook sequence, uploads every `dist/*.deb` as an Actions artifact, and creates or updates a `build-<short-sha>` GitHub Release.
 
 After pushing, inspect:
 
 - The latest run of `.github/workflows/ci-release.yml`.
 - The uploaded `.deb` artifacts for the workflow run.
-- The GitHub Release for `commit-<sha>`.
+- The GitHub Release for `build-<short-sha>`.
