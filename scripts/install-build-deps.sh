@@ -1,13 +1,53 @@
 #!/usr/bin/env bash
-# Install apt packages, language toolchains, and any other system
-# dependencies needed by `scripts/build-debs.sh` and the test runners.
+# Install apt packages and a rust toolchain needed to build the safe
+# port. Honors safe/rust-toolchain.toml when present (auto-detect the
+# pinned channel); falls back to stable. Override SAFELIBS_RUST_TOOLCHAIN
+# to force a specific toolchain regardless of the file.
 #
-# The template default is a no-op because the reference `build-debs.sh`
-# only needs `dpkg-deb`, which is preinstalled on the GitHub-hosted
-# `ubuntu-latest` runners. Real ports replace this script with the apt
-# install / rustup / cargo / cmake / etc. commands their build needs.
-#
-# Contract: succeed when the runner is ready to build. Run early in CI;
-# may invoke `sudo`. Idempotent reruns must succeed.
+# The reference template build only needs `dpkg-deb` (preinstalled on
+# ubuntu-latest), so this script's apt + rustup install only matters for
+# real ports overriding scripts/build-debs.sh. Such ports may safely
+# replace this script with their own apt/rustup logic when their build
+# needs more (clang+lld, autoconf, cmake, etc.).
 set -euo pipefail
-exit 0
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+toolchain="${SAFELIBS_RUST_TOOLCHAIN:-}"
+if [[ -z "$toolchain" && -f "$repo_root/safe/rust-toolchain.toml" ]]; then
+  toolchain="$(grep -oP '^channel\s*=\s*"\K[^"]+' "$repo_root/safe/rust-toolchain.toml" || true)"
+fi
+toolchain="${toolchain:-stable}"
+
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  build-essential \
+  ca-certificates \
+  curl \
+  devscripts \
+  dpkg-dev \
+  equivs \
+  fakeroot \
+  file \
+  git \
+  jq \
+  python3 \
+  rsync \
+  xz-utils
+
+# Always install rustup into $HOME so subsequent CI steps see the pinned
+# toolchain instead of the runner's preinstalled (older) system rust.
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+  | sh -s -- -y --profile minimal --default-toolchain "$toolchain" --no-modify-path
+
+# shellcheck source=/dev/null
+. "$HOME/.cargo/env"
+rustup default "$toolchain"
+rustc --version
+cargo --version
+
+# Persist for subsequent CI steps (build-debs.sh runs in a fresh shell).
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+  printf '%s\n' "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+fi
