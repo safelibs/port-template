@@ -2,7 +2,7 @@
 set -euo pipefail
 
 fail() {
-  printf 'build-deb: %s\n' "$*" >&2
+  printf 'build-debs: %s\n' "$*" >&2
   exit 1
 }
 
@@ -27,7 +27,7 @@ trim_whitespace() {
 
 is_supported_package_var() {
   case "$1" in
-    DEB_PACKAGE | DEB_VERSION | DEB_ARCHITECTURE | DEB_MAINTAINER | DEB_SECTION | DEB_PRIORITY | DEB_DESCRIPTION | DEB_INSTALL_PREFIX | DEB_DEPENDS)
+    SAFELIBS_LIBRARY | DEB_PACKAGE | DEB_VERSION | DEB_ARCHITECTURE | DEB_MAINTAINER | DEB_SECTION | DEB_PRIORITY | DEB_DESCRIPTION | DEB_INSTALL_PREFIX | DEB_DEPENDS)
       return 0
       ;;
     *)
@@ -103,6 +103,7 @@ load_package_config() {
   local config_path
   local var
   local required_vars=(
+    SAFELIBS_LIBRARY
     DEB_PACKAGE
     DEB_VERSION
     DEB_ARCHITECTURE
@@ -119,7 +120,7 @@ load_package_config() {
 
   validate_package_config_file "$config_path" "packaging/package.env"
 
-  unset DEB_PACKAGE DEB_VERSION DEB_ARCHITECTURE DEB_MAINTAINER DEB_SECTION DEB_PRIORITY DEB_DESCRIPTION DEB_INSTALL_PREFIX DEB_DEPENDS
+  unset SAFELIBS_LIBRARY DEB_PACKAGE DEB_VERSION DEB_ARCHITECTURE DEB_MAINTAINER DEB_SECTION DEB_PRIORITY DEB_DESCRIPTION DEB_INSTALL_PREFIX DEB_DEPENDS
   # shellcheck source=/dev/null
   source "$config_path"
 
@@ -129,12 +130,13 @@ load_package_config() {
     fi
   done
 
-  for var in DEB_PACKAGE DEB_VERSION DEB_ARCHITECTURE DEB_MAINTAINER DEB_SECTION DEB_PRIORITY DEB_DESCRIPTION DEB_INSTALL_PREFIX; do
+  for var in SAFELIBS_LIBRARY DEB_PACKAGE DEB_VERSION DEB_ARCHITECTURE DEB_MAINTAINER DEB_SECTION DEB_PRIORITY DEB_DESCRIPTION DEB_INSTALL_PREFIX; do
     if [[ -z "${!var}" ]]; then
       fail "package metadata must not be empty: $var"
     fi
   done
 
+  [[ "$SAFELIBS_LIBRARY" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "SAFELIBS_LIBRARY is not a valid library identifier: $SAFELIBS_LIBRARY"
   [[ "$DEB_PACKAGE" =~ ^[a-z0-9][a-z0-9+.-]*$ ]] || fail "DEB_PACKAGE is not a valid Debian package name: $DEB_PACKAGE"
   [[ "$DEB_INSTALL_PREFIX" == /* ]] || fail "DEB_INSTALL_PREFIX must be an absolute path"
   [[ "$DEB_INSTALL_PREFIX" != "/" ]] || fail "DEB_INSTALL_PREFIX must not be /"

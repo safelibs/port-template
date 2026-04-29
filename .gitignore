@@ -2,6 +2,7 @@
 /.juvenal-state.json
 /workflow.yaml
 /.ci/
+/.work/
 /build/
 /dist/
 /release-artifacts/

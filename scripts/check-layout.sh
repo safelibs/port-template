@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 fail() {
-  printf 'validate-template: %s\n' "$*" >&2
+  printf 'check-layout: %s\n' "$*" >&2
   exit 1
 }
 
@@ -42,12 +42,12 @@ validate_shell_syntax() {
 
 validate_package_metadata() {
   validate_shell_syntax "packaging/package.env"
-  validate_shell_syntax "scripts/build-deb.sh"
+  validate_shell_syntax "scripts/build-debs.sh"
 
   (
     cd "$repo_root"
     # shellcheck source=/dev/null
-    source "$repo_root/scripts/build-deb.sh"
+    source "$repo_root/scripts/build-debs.sh"
     load_package_config
   ) || fail "invalid package metadata: packaging/package.env"
 }
@@ -63,8 +63,8 @@ required_dirs=(
   safe
   packaging
   docs
-  tests/original
-  tests/safe
+  tests/upstream
+  tests/port
   scripts
 )
 
@@ -72,14 +72,14 @@ required_files=(
   .github/workflows/ci-release.yml
   .gitattributes
   README.md
+  AGENTS.md
+  CLAUDE.md
   all_cves.json
   dependents.json
   docs/PORTING.md
   docs/PUBLISHING.md
   relevant_cves.json
   packaging/package.env
-  test-original.sh
-  test-safe.sh
 )
 
 json_files=(
@@ -89,11 +89,13 @@ json_files=(
 )
 
 executable_files=(
-  test-original.sh
-  test-safe.sh
-  scripts/build-deb.sh
+  scripts/build-debs.sh
+  scripts/check-layout.sh
+  scripts/install-build-deps.sh
+  scripts/run-port-tests.sh
   scripts/run-tests.sh
-  scripts/validate-template.sh
+  scripts/run-upstream-tests.sh
+  scripts/run-validation-tests.sh
 )
 
 gitattributes_entries=(
@@ -126,4 +128,4 @@ done
 
 validate_package_metadata
 
-printf 'Template validation passed.\n'
+printf 'Layout check passed.\n'

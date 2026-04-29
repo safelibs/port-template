@@ -21,7 +21,7 @@ gh release view --repo safelibs/port-template "commit-$(git rev-parse HEAD)" --j
 
 The initial push may include scaffold commits made before the CI workflow and completed template files existed. During the initial branch creation push, `.github/workflows/ci-release.yml` is expected to skip only those incomplete bootstrap commits when they are missing completed-template files.
 
-The final pushed head commit is different: it must satisfy the completed template contract. CI must validate the template, run both test entrypoints, build a Debian package, upload the `.deb` artifact, and publish the GitHub Release tagged `commit-<sha>` for that head commit.
+The final pushed head commit is different: it must satisfy the completed template contract. CI must run the hook sequence (`install-build-deps`, `check-layout`, `build-debs`, `run-upstream-tests`, `run-port-tests`, `run-validation-tests`), upload every `dist/*.deb` artifact, and publish the GitHub Release tagged `commit-<sha>` for that head commit.
 
 If the head commit does not produce a release, inspect the latest `ci-release.yml` run before using the repository as a template.
 
@@ -35,4 +35,4 @@ After running the publication commands, confirm:
 - `origin` points to `safelibs/port-template`.
 - The remote `main` SHA matches the local `HEAD`.
 - The latest workflow run completed for the pushed head commit.
-- The `commit-<sha>` GitHub Release exists and includes the built `.deb` asset.
+- The `commit-<sha>` GitHub Release exists and includes every built `.deb` asset.

@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-  printf 'Usage: %s <original|safe>\n' "${0##*/}" >&2
+  printf 'Usage: %s <upstream|port>\n' "${0##*/}" >&2
 }
 
 run_test_dir() {
@@ -58,7 +58,7 @@ if (( $# != 1 )); then
 fi
 
 case "$1" in
-  original | safe)
+  upstream | port)
     run_test_dir "$1"
     ;;
   *)

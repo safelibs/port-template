@@ -1,34 +1,34 @@
 # Porting Guide
 
-Use this checklist when creating a new `safelibs/port-*` repository from this template. Keep changes focused on the port being created, and update prepared artifacts in place when they already exist.
+Use this checklist when creating a new `safelibs/port-*` repository from this template. Read [AGENTS.md](../AGENTS.md) first — it defines the script contracts every step here assumes.
 
 ## Port Checklist
 
-1. Choose or create a new `safelibs/port-*` repository from this template.
-2. Fill `original/` with the upstream source snapshot for the original implementation, or with precise import/build instructions for obtaining that exact source.
+1. Create a new `safelibs/port-*` repository from this template.
+2. Fill `original/` with the upstream source snapshot, or precise import/build instructions.
 3. Fill `safe/` with the safe implementation and any files that should be packaged.
-4. Replace the placeholder CVE and dependent data in `all_cves.json`, `dependents.json`, and `relevant_cves.json`.
-5. Add original implementation tests under `tests/original/`, or replace `test-original.sh` with a port-specific entrypoint.
-6. Add safe implementation tests under `tests/safe/`, or replace `test-safe.sh` with a port-specific entrypoint.
-7. Update `packaging/package.env` with the Debian package metadata for the port.
-8. Run local validation, tests, and package build commands.
-9. Push to `main`.
-10. Inspect GitHub Actions artifacts and GitHub Releases for the pushed commit.
+4. Replace the placeholder data in `all_cves.json`, `dependents.json`, and `relevant_cves.json`.
+5. Add upstream regression tests under `tests/upstream/`, or replace `scripts/run-upstream-tests.sh` with a port-specific runner that installs `dist/*.deb` and invokes the upstream test harness.
+6. Add port-authored tests under `tests/port/`, or replace `scripts/run-port-tests.sh` with a port-specific runner.
+7. Update `packaging/package.env` — at minimum set `SAFELIBS_LIBRARY` to the validator manifest identifier; update the `DEB_*` fields if you keep the reference `scripts/build-debs.sh`.
+8. Override `scripts/install-build-deps.sh` and `scripts/build-debs.sh` whenever the template defaults do not fit your build (typical for ports that use `dpkg-buildpackage`, `cargo`, `cmake`, or custom build scripts).
+9. Run local validation, tests, and package build commands.
+10. Push to `main`. Inspect the latest CI run and the `commit-<sha>` GitHub Release.
 
 ## Consuming Existing Artifacts
 
 Future ports may already have checked-in source snapshots, CVE data, dependent inventories, or test harnesses prepared by earlier workflow phases. Treat those artifacts as inputs:
 
-- If `original/` already contains the needed upstream snapshot or import instructions, use it as the source of truth and update it only when the selected upstream version changes.
-- If `all_cves.json`, `dependents.json`, or `relevant_cves.json` already contains prepared data, preserve useful entries and edit the files in place. Do not recollect the whole inventory just because the port is moving into this template.
-- If `tests/original/`, `tests/safe/`, `test-original.sh`, or `test-safe.sh` already contains a working harness, keep it and adapt it to the final layout.
+- If `original/` already contains the needed upstream snapshot or import instructions, use it as the source of truth.
+- If `all_cves.json`, `dependents.json`, or `relevant_cves.json` already contains prepared data, preserve useful entries and edit in place.
+- If `tests/upstream/`, `tests/port/`, or any of the `scripts/*.sh` already contains a working harness, keep it and adapt it to the final layout.
 - If an artifact is missing, incomplete, or known to be stale, document the correction in the commit that updates it.
 
 ## Source Layout
 
-Put the upstream or original implementation under `original/`. A source snapshot is preferred when it is small enough and legally appropriate to check in. If the source should not be committed directly, keep deterministic import instructions in `original/README.md` or adjacent scripts so maintainers can reproduce the exact original input.
+Put the upstream or original implementation under `original/`. A source snapshot is preferred when it is small enough and legally appropriate to check in. If the source should not be committed directly, keep deterministic import instructions in `original/README.md` or adjacent scripts.
 
-Put the safe implementation under `safe/`. `scripts/build-deb.sh` copies files from `safe/` into the package install prefix while excluding `.git`, `build`, `dist`, `.gitkeep`, and `README.md`. Add the packageable library artifacts or build outputs that should land in the `.deb`.
+Put the safe implementation under `safe/`. The reference `scripts/build-debs.sh` copies files from `safe/` into `DEB_INSTALL_PREFIX` while excluding `.git`, `build`, `dist`, `.gitkeep`, and `README.md`. Most real ports replace that script with `dpkg-buildpackage` rooted in `safe/debian/`; in that case the `DEB_*` fields in `packaging/package.env` can stay at the template defaults but `SAFELIBS_LIBRARY` is still required.
 
 ## CVE And Dependent Data
 
@@ -38,62 +38,64 @@ Replace the placeholders with port-specific data:
 - `relevant_cves.json`: subset of CVEs relevant to the safe implementation, including the selection criteria.
 - `dependents.json`: dependent packages, projects, or applications used to evaluate compatibility and risk.
 
-Keep the files valid JSON. The template validator runs `python3 -m json.tool` on each file.
+Keep the files valid JSON. `scripts/check-layout.sh` runs `python3 -m json.tool` on each.
 
 ## Tests
 
-The default root scripts delegate to `scripts/run-tests.sh`, which runs every `*.sh` file in the matching test directory with `bash`.
+The CI hook sequence runs three test scripts in order: `run-upstream-tests.sh`, `run-port-tests.sh`, `run-validation-tests.sh`. The first two delegate to `scripts/run-tests.sh`, which executes every `*.sh` under `tests/upstream/` or `tests/port/`. The third runs the [safelibs/validator](https://github.com/safelibs/validator) matrix against the just-built `.deb`s.
 
-- Add original behavior tests under `tests/original/`.
-- Add safe implementation tests under `tests/safe/`.
-- Keep tests deterministic and runnable from the repository root.
-- Replace `test-original.sh` or `test-safe.sh` only when a port needs a different test runner.
+- Upstream regression tests prove API/ABI compatibility with what real consumers expect; usually they install `dist/*.deb` into a chroot or container and invoke the upstream harness.
+- Port-authored tests cover whatever the safe implementation uniquely needs: unit tests, ABI checks, fuzzing, differential tests.
+- Validation tests run automatically once `SAFELIBS_LIBRARY` matches an entry in the validator manifest. A port that is not yet listed in the validator (or the template itself) skips this hook cleanly.
 
-The placeholder harness exits successfully when no tests exist. That is only for template bootstrap; a real port should include tests that prove both the original behavior and safe implementation behavior needed by the port.
+The placeholder upstream and port harnesses exit successfully when no tests exist. That is only for template bootstrap; a real port should provide meaningful tests.
 
 ## Packaging
 
-Update `packaging/package.env` before publishing:
+Update `packaging/package.env`:
 
-- `DEB_PACKAGE`: package name, for example `safelibs-port-example`.
-- `DEB_VERSION`: base version; the builder appends `+git.<commit-sha>`.
+- `SAFELIBS_LIBRARY`: validator manifest identifier and `safelibs/port-<library>` suffix.
+- `DEB_PACKAGE`: package name, e.g. `safelibs-port-example`.
+- `DEB_VERSION`: base version; the reference builder appends `+git.<commit-sha>`.
 - `DEB_ARCHITECTURE`: Debian architecture or `auto`.
 - `DEB_MAINTAINER`: real maintainer contact.
 - `DEB_SECTION`: package section, usually `libs`.
 - `DEB_PRIORITY`: package priority, usually `optional`.
 - `DEB_DESCRIPTION`: short package description.
 - `DEB_INSTALL_PREFIX`: absolute install path for copied `safe/` files.
-- `DEB_DEPENDS`: comma-separated dependencies or an empty string.
+- `DEB_DEPENDS`: comma-separated dependencies or empty string.
 
 Build locally before pushing:
 
 ```sh
 rm -rf build dist
-bash scripts/build-deb.sh
+bash scripts/build-debs.sh
 ```
 
-The resulting package is written to `dist/`.
+Resulting `.deb`(s) land in `dist/`.
 
 ## Local Verification
 
-Run the same checks the template expects CI to run:
+Run the full hook sequence the same way CI runs it:
 
 ```sh
-bash scripts/validate-template.sh
-./test-original.sh
-./test-safe.sh
+bash scripts/install-build-deps.sh
+bash scripts/check-layout.sh
 rm -rf build dist
-bash scripts/build-deb.sh
+bash scripts/build-debs.sh
+bash scripts/run-upstream-tests.sh
+bash scripts/run-port-tests.sh
+bash scripts/run-validation-tests.sh
 ```
 
-Fix validation, test, or package build failures before pushing to `main`.
+To reuse a local validator checkout (faster than re-cloning), set `SAFELIBS_VALIDATOR_DIR=/path/to/validator`. Fix any failure before pushing to `main`.
 
 ## Push And Inspect
 
-Push completed port work to `main`. The CI workflow runs validation, tests, and package building for pushed commits. For each normal pushed commit, it uploads `.deb` artifacts and creates or updates a GitHub Release named `commit-<sha>`.
+Push completed port work to `main`. CI runs the hook sequence, uploads every `dist/*.deb` as an Actions artifact, and creates or updates a `commit-<sha>` GitHub Release.
 
 After pushing, inspect:
 
 - The latest run of `.github/workflows/ci-release.yml`.
-- The uploaded `.deb` artifact for the workflow run.
+- The uploaded `.deb` artifacts for the workflow run.
 - The GitHub Release for `commit-<sha>`.

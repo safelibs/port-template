@@ -31,47 +31,66 @@ jobs:
           dpkg --version
           dpkg-deb --version
 
-      - name: Validate template
-        run: bash scripts/validate-template.sh
+      - name: Install build dependencies
+        run: bash scripts/install-build-deps.sh
 
-      - name: Run original tests
-        run: ./test-original.sh
+      - name: Check repository layout
+        run: bash scripts/check-layout.sh
 
-      - name: Run safe tests
-        run: ./test-safe.sh
-
-      - name: Build .deb
+      - name: Build .deb artifacts
         env:
           SAFELIBS_COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           rm -rf build dist
-          bash scripts/build-deb.sh
+          bash scripts/build-debs.sh
 
-      - name: Locate built artifact
+      - name: Run upstream tests
+        env:
+          SAFELIBS_COMMIT_SHA: ${{ github.sha }}
+        run: bash scripts/run-upstream-tests.sh
+
+      - name: Run port tests
+        env:
+          SAFELIBS_COMMIT_SHA: ${{ github.sha }}
+        run: bash scripts/run-port-tests.sh
+
+      - name: Run validation tests
+        env:
+          SAFELIBS_COMMIT_SHA: ${{ github.sha }}
+        run: bash scripts/run-validation-tests.sh
+
+      - name: Collect built artifacts
         id: artifact
         run: |
           set -euo pipefail
+          shopt -s nullglob
           mapfile -t debs < <(find dist -type f -name '*.deb' -print | sort)
-          if (( ${#debs[@]} != 1 )); then
-            printf 'Expected exactly one .deb under dist/, found %d.\n' "${#debs[@]}" >&2
-            find dist -type f -print >&2 || true
+          if (( ${#debs[@]} == 0 )); then
+            printf 'No .deb files were produced under dist/.\n' >&2
             exit 1
           fi
-          printf 'deb=%s\n' "${debs[0]}" >> "$GITHUB_OUTPUT"
+          {
+            printf 'count=%d\n' "${#debs[@]}"
+            printf 'paths<<EOF\n'
+            printf '%s\n' "${debs[@]}"
+            printf 'EOF\n'
+          } >> "$GITHUB_OUTPUT"
+          printf 'Built %d .deb file(s):\n' "${#debs[@]}"
+          printf '  %s\n' "${debs[@]}"
 
-      - name: Upload Debian artifact
+      - name: Upload Debian artifacts
         uses: actions/upload-artifact@v4
         with:
           name: debs-${{ github.run_id }}
-          path: ${{ steps.artifact.outputs.deb }}
+          path: dist/*.deb
           if-no-files-found: error
 
       - name: Publish commit release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-          DEB_FILE: ${{ steps.artifact.outputs.deb }}
+          DEB_PATHS: ${{ steps.artifact.outputs.paths }}
         run: |
           set -euo pipefail
 
@@ -86,16 +105,20 @@ jobs:
             git push origin "refs/tags/$tag"
           fi
 
+          mapfile -t deb_files <<< "$DEB_PATHS"
+
           notes_file="$(mktemp)"
           {
             printf 'Commit SHA: %s\n\n' "$GITHUB_SHA"
-            printf 'Attached .deb file was produced by `scripts/build-deb.sh`.\n'
+            printf 'Attached .deb file(s) were produced by `scripts/build-debs.sh`.\n'
           } > "$notes_file"
 
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$DEB_FILE" --clobber
+            gh release upload "$tag" "${deb_files[@]}" --clobber
           else
-            gh release create "$tag" "$DEB_FILE" --title "Safe library deb for ${GITHUB_SHA:0:12}" --notes-file "$notes_file"
+            gh release create "$tag" "${deb_files[@]}" \
+              --title "Safe library debs for ${GITHUB_SHA:0:12}" \
+              --notes-file "$notes_file"
           fi
 
           rm -f "$notes_file"
