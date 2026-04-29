@@ -18,13 +18,14 @@ The full contract — what each script must do, the order CI runs them in, and w
 | `dependents.json` | Inventory of dependent packages, projects, or applications used to evaluate compatibility and blast radius. |
 | `relevant_cves.json` | CVEs selected as relevant to the safe port, with the criteria used for selection. |
 | `packaging/package.env` | Debian package metadata plus `SAFELIBS_LIBRARY` (the validator manifest identifier). |
-| `scripts/install-build-deps.sh` | Hook: install apt packages, language toolchains, system deps. Template default no-op. |
-| `scripts/check-layout.sh` | Hook: lint the repository layout against the template contract. |
+| `scripts/install-build-deps.sh` | Hook: install apt packages, language toolchains, system deps. Template default reads `safe/rust-toolchain.toml` (falls back to stable) and installs rustup; ports override when more is needed. |
+| `scripts/check-layout.sh` | Hook: lint the repository layout, enforce `SAFELIBS_LIBRARY` matches the repo name suffix, and refuse hardcoded `/home/<user>/safelibs/port-*` paths under `safe/` and `.cargo/`. |
 | `scripts/build-debs.sh` | Hook: produce one or more `.deb` files under `dist/`. |
 | `scripts/run-upstream-tests.sh` | Hook: run upstream's regression tests against the built `.deb`s. |
 | `scripts/run-port-tests.sh` | Hook: run port-authored tests for the safe implementation. |
 | `scripts/run-validation-tests.sh` | Hook: run the [safelibs/validator](https://github.com/safelibs/validator) test matrix in `port-04-test` mode against `dist/`. |
 | `scripts/run-tests.sh` | Internal helper that powers the upstream/port test runners. |
+| `scripts/lib/build-deb-common.sh` | Bash helper for port-specific `build-debs.sh` overrides (rust env, dist dir, changelog stamping, dpkg-buildpackage runner). |
 | `scripts/lib/build_port_lock.py` | Internal helper for `run-validation-tests.sh`. |
 | `.github/workflows/ci-release.yml` | GitHub Actions workflow that runs the hook sequence and publishes a `build-<short-sha>` GitHub Release. |
 | `AGENTS.md` | Canonical contract. Required reading before changing scripts, layout, or CI. |
@@ -61,24 +62,13 @@ bash scripts/run-validation-tests.sh
 
 ## Packaging Metadata
 
-Every real port must update `packaging/package.env` before publishing releases:
+The only field every port must set in `packaging/package.env`:
 
 | Field | Required update |
 | --- | --- |
-| `SAFELIBS_LIBRARY` | Library identifier matching the validator manifest and the port repo name (`safelibs/port-<SAFELIBS_LIBRARY>`). |
-| `DEB_PACKAGE` | Debian package name. Lowercase, Debian-conformant, e.g. `safelibs-port-example`. |
-| `DEB_VERSION` | Base upstream or port version. `scripts/build-debs.sh` appends `+git.<commit-sha>` during builds. |
-| `DEB_ARCHITECTURE` | Debian architecture or `auto` for `dpkg --print-architecture`. |
-| `DEB_MAINTAINER` | Real maintainer contact. Replace the template `.invalid` address. |
-| `DEB_SECTION` | Debian section, usually `libs`. |
-| `DEB_PRIORITY` | Debian priority, usually `optional`. |
-| `DEB_DESCRIPTION` | Short package description. |
-| `DEB_INSTALL_PREFIX` | Absolute install path for files copied from `safe/`. Not `/`. |
-| `DEB_DEPENDS` | Comma-separated Debian dependency list, or empty string. |
+| `SAFELIBS_LIBRARY` | Library identifier matching the validator manifest **and** the repo name suffix (`safelibs/port-<SAFELIBS_LIBRARY>`). `scripts/check-layout.sh` enforces both. |
 
-The package.env validator rejects unsupported variables, command/process substitution, empty required fields, invalid package names, and non-absolute install prefixes.
-
-`packaging/package.env` is only consumed by the template's reference `scripts/build-debs.sh`. A port that overrides `build-debs.sh` with its own pipeline (`dpkg-buildpackage`, custom build script, etc.) can leave `DEB_*` values untouched but must still set `SAFELIBS_LIBRARY` for `run-validation-tests.sh`.
+The template's reference `scripts/build-debs.sh` *also* consumes a set of `DEB_*` fields (`DEB_PACKAGE`, `DEB_VERSION`, `DEB_ARCHITECTURE`, `DEB_MAINTAINER`, `DEB_SECTION`, `DEB_PRIORITY`, `DEB_DESCRIPTION`, `DEB_INSTALL_PREFIX`, `DEB_DEPENDS`) for its self-contained payload-copy build. Real ports override `build-debs.sh` (typically with `dpkg-buildpackage` rooted in `safe/debian/`) and can drop the `DEB_*` fields from `packaging/package.env` entirely.
 
 ## CI And GitHub Releases
 

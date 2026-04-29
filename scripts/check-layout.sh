@@ -56,6 +56,56 @@ validate_package_metadata() {
 
   [[ -n "$library" ]] || fail "packaging/package.env must set SAFELIBS_LIBRARY"
   [[ "$library" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "invalid SAFELIBS_LIBRARY: $library"
+
+  # If we're inside a directory matching port-<name>, SAFELIBS_LIBRARY must
+  # match. Skip the check for the template repo itself or any other dir name
+  # so non-port consumers don't have to fight it.
+  local repo_dir_name
+  repo_dir_name="$(basename "$repo_root")"
+  if [[ "$repo_dir_name" == port-* && "$repo_dir_name" != port-template ]]; then
+    local expected="${repo_dir_name#port-}"
+    [[ "$library" == "$expected" ]] \
+      || fail "SAFELIBS_LIBRARY ($library) does not match repo name suffix ($expected)"
+  fi
+}
+
+validate_no_host_paths() {
+  # Scan a small allowlist of build-affecting files for hardcoded
+  # /home/<user>/safelibs/port-<name> paths that leak from local dev
+  # checkouts. Common culprits: .cargo/config.toml (linker), debian/rules
+  # (CARGO_HOME), and helper scripts under safe/tools/.
+  local -a candidates=(
+    .cargo/config.toml
+    safe/.cargo/config.toml
+    safe/debian/rules
+    safe/Cargo.toml
+  )
+
+  if [[ -d "$repo_root/safe/tools" ]]; then
+    while IFS= read -r -d '' path; do
+      candidates+=("${path#"$repo_root/"}")
+    done < <(find "$repo_root/safe/tools" \
+      -type f \( -name '*.sh' -o -name '*.toml' -o -name '*.json' -o -name 'Makefile' \) \
+      -print0 2>/dev/null)
+  fi
+
+  local pattern='/home/[^/[:space:]]+/safelibs/port-'
+  local hits=()
+  for path in "${candidates[@]}"; do
+    [[ -f "$repo_root/$path" ]] || continue
+    if grep -E -q "$pattern" "$repo_root/$path" 2>/dev/null; then
+      hits+=("$path")
+    fi
+  done
+
+  if (( ${#hits[@]} > 0 )); then
+    {
+      printf 'check-layout: hardcoded /home/<user>/safelibs/port-* paths in:\n'
+      printf '  %s\n' "${hits[@]}"
+      printf 'these leak from local dev and break CI on any other host.\n'
+    } >&2
+    exit 1
+  fi
 }
 
 require_gitattributes_entry() {
@@ -68,7 +118,6 @@ required_dirs=(
   original
   safe
   packaging
-  docs
   tests/upstream
   tests/port
   scripts
@@ -82,8 +131,6 @@ required_files=(
   CLAUDE.md
   all_cves.json
   dependents.json
-  docs/PORTING.md
-  docs/PUBLISHING.md
   relevant_cves.json
   packaging/package.env
 )
@@ -133,5 +180,6 @@ for entry in "${gitattributes_entries[@]}"; do
 done
 
 validate_package_metadata
+validate_no_host_paths
 
 printf 'Layout check passed.\n'
