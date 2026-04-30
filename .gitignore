@@ -7,6 +7,12 @@
 /dist/
 /release-artifacts/
 *.deb
+*.ddeb
+*.dsc
+*.changes
+*.buildinfo
+*.orig.tar.*
+*.debian.tar.*
 *.log
 .DS_Store
 *.swp
