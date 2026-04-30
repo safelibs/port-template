@@ -20,8 +20,8 @@ The current shape moves the divergence into hook scripts under `scripts/`. The w
 | 4 | Run upstream tests | `scripts/run-upstream-tests.sh` | Run every `*.sh` under `tests/upstream/` |
 | 5 | Run port tests | `scripts/run-port-tests.sh` | Run every `*.sh` under `tests/port/` |
 | 6 | Run validation tests | `scripts/run-validation-tests.sh` | Clone `safelibs/validator`, run `port-04-test` mode against `dist/*.deb` |
-| 7 | Upload `dist/*.deb` | (workflow) | One GitHub Actions artifact per run |
-| 8 | Publish release | (workflow) | `build-<short-sha>` GitHub Release with every `dist/*.deb` |
+| 7 | Upload `dist/*` | (workflow) | One GitHub Actions artifact per run, containing every `.deb` plus the matching source bundle (`.dsc`, `.tar.*`, `.changes`, `.buildinfo`) |
+| 8 | Publish release | (workflow) | `build-<short-sha>` GitHub Release with every file from `dist/` attached |
 
 Steps 1–6 are hooks. Steps 7–8 are workflow-owned and ports do not customize them.
 
@@ -119,7 +119,7 @@ A small bash library that ports overriding `build-debs.sh` may source. It provid
 - `prepare_rust_env` — source `~/.cargo/env`, prepend `~/.cargo/bin` to `PATH`.
 - `prepare_dist_dir` — recreate `<repo>/dist` empty.
 - `stamp_safelibs_changelog` — rewrite `debian/changelog` to version `<upstream>+safelibs<commit-epoch>`. Honors `SAFELIBS_COMMIT_SHA` when CI sets it.
-- `build_with_dpkg_buildpackage` — run `mk-build-deps -i` + `dpkg-buildpackage -us -uc -b` and copy `../*.deb` into `<repo>/dist`.
+- `build_with_dpkg_buildpackage` — run `mk-build-deps -i` + `dpkg-buildpackage -us -uc` (full source + binary build) and copy the resulting `.deb`, `.dsc`, `.tar.*`, `.changes`, and `.buildinfo` files into `<repo>/dist`.
 
 Most port `build-debs.sh` scripts collapse to ~15 lines after sourcing this helper.
 
