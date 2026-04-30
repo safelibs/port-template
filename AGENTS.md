@@ -31,7 +31,7 @@ Each hook script is invoked with `bash <script>` from the repository root. `set 
 
 ### `scripts/install-build-deps.sh`
 
-Install everything the build and tests need that is not preinstalled on `ubuntu-latest`:
+Install everything the build and tests need that is not preinstalled on the GitHub-hosted `ubuntu-24.04` runner:
 
 - apt packages (compilers, dev libraries, packaging tools)
 - language toolchains (rustup, cargo, custom Python venvs)
