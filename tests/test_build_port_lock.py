@@ -147,7 +147,7 @@ class BuildPortLockEndToEndTest(unittest.TestCase):
 
             payload = json.loads(lock_path.read_text())
             self.assertEqual(payload["schema_version"], 1)
-            self.assertEqual(payload["mode"], "port-04-test")
+            self.assertEqual(payload["mode"], "port")
 
             self.assertEqual(len(payload["libraries"]), 1)
             entry = payload["libraries"][0]

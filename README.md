@@ -23,7 +23,7 @@ The full contract — what each script must do, the order CI runs them in, and w
 | `scripts/build-debs.sh` | Hook: produce one or more `.deb` files under `dist/`. |
 | `scripts/run-upstream-tests.sh` | Hook: run upstream's regression tests against the built `.deb`s. |
 | `scripts/run-port-tests.sh` | Hook: run port-authored tests for the safe implementation. |
-| `scripts/run-validation-tests.sh` | Hook: run the [safelibs/validator](https://github.com/safelibs/validator) test matrix in `port-04-test` mode against `dist/`. |
+| `scripts/run-validation-tests.sh` | Hook: run the [safelibs/validator](https://github.com/safelibs/validator) test matrix in `port` mode against `dist/`. |
 | `scripts/run-tests.sh` | Internal helper that powers the upstream/port test runners. |
 | `scripts/lib/build-deb-common.sh` | Bash helper for port-specific `build-debs.sh` overrides (rust env, dist dir, changelog stamping, dpkg-buildpackage runner). |
 | `scripts/lib/build_port_lock.py` | Internal helper for `run-validation-tests.sh`. |
